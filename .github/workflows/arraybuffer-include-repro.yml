@@ -12,8 +12,7 @@ jobs:
           node-version: 22.13.0
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2'
-          bundler-cache: true
+          ruby-version: '3.2.0'
       - name: Pin hermes-compiler so preinstall skips its nested yarn add
         run: |
           node -e "const fs=require('fs');const f='packages/react-native/package.json';const j=JSON.parse(fs.readFileSync(f));j.dependencies['hermes-compiler']='250829098.0.16';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
@@ -23,7 +22,9 @@ jobs:
         run: yarn --cwd packages/react-native-codegen build
       - name: Pod install
         working-directory: packages/rn-tester
-        run: bundle exec pod install
+        run: |
+          bundle install
+          bundle exec pod update hermes-engine --no-repo-update
       - name: Build for testing
         working-directory: packages/rn-tester
         run: |
