@@ -1,0 +1,37 @@
+name: arraybuffer-include-repro
+on:
+  workflow_dispatch: {}
+jobs:
+  build-for-testing:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+      - name: Install JS deps
+        run: yarn install
+      - name: Build codegen
+        run: yarn --cwd packages/react-native-codegen build
+      - name: Pod install
+        working-directory: packages/rn-tester
+        run: bundle exec pod install
+      - name: Build for testing
+        working-directory: packages/rn-tester
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -workspace RNTesterPods.xcworkspace \
+            -scheme RNTester \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/RNTesterBuild > build.log 2>&1 || true
+          grep -E "TEST BUILD (SUCCEEDED|FAILED)" build.log || tail -20 build.log
+          echo "== RCTTurboModuleArrayBufferTests errors (if any) =="
+          grep -m4 "RCTTurboModuleArrayBufferTests.mm.*error" build.log || echo "none"
+          grep -q "TEST BUILD SUCCEEDED" build.log
