@@ -1,0 +1,52 @@
+name: arraybuffer-include-repro
+on:
+  workflow_dispatch: {}
+jobs:
+  unit-tests-on-runner-image:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2.0'
+      - name: Pin hermes-compiler so preinstall skips its nested yarn add
+        run: |
+          node -e "const fs=require('fs');const f='packages/react-native/package.json';const j=JSON.parse(fs.readFileSync(f));j.dependencies['hermes-compiler']='250829098.0.16';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
+      - name: Install JS deps
+        run: yarn install
+      - name: Build codegen
+        run: yarn --cwd packages/react-native-codegen build
+      - name: Pod setup
+        working-directory: packages/rn-tester
+        run: |
+          bundle install
+          bundle exec pod update hermes-engine --no-repo-update
+      - name: Runner image simulator inventory
+        run: |
+          xcrun simctl list runtimes
+          echo "== iPhone 16 devices =="
+          xcrun simctl list devices available | grep "iPhone 16" || echo "none"
+      - name: Boot pinned simulator (mirrors prepare-ios-tests)
+        run: source scripts/.tests.env && xcrun simctl boot "$IOS_DEVICE" || true
+      - name: Run unit and integration tests (the step this change re-enables)
+        run: |
+          set +e
+          yarn test-ios > /tmp/testios.log 2>&1
+          RC=$?
+          set -e
+          echo "yarn test-ios exit=$RC"
+          tail -60 /tmp/testios.log
+          grep -E "Test Suite 'All tests'|Executed [0-9]+ tests|Test completed successfully" /tmp/testios.log | tail -8
+          exit $RC
+      - name: Result bundle at the canonical path the tar step reads
+        run: ls -d /tmp/RNTesterTestResults && echo "bundle present"
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testios-log
+          path: /tmp/testios.log
